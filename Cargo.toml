@@ -7,3 +7,4 @@ edition = "2021"
 
 [dependencies]
 automata = { path = "../automata" }
+csv = "1.3.0"

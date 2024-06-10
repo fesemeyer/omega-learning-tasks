@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::fs;
+use csv::Writer;
 
 use automata::{
     automaton::InfiniteWordAutomaton,
@@ -17,6 +19,9 @@ fn main() {
     let test_size = 1000;
     let num_sets = 2;
     let lambda = 0.95;
+    fs::create_dir_all("data/automata").unwrap();
+    fs::create_dir_all("data/sets").unwrap();
+    fs::create_dir_all("data/tasks").unwrap();
 
     // generate DBAs
     println!("generating DBAs");
@@ -45,18 +50,19 @@ fn main() {
     // generate train and test sets
     println!("generating word sets");
     let mut sets = HashMap::new();
-    for aut_size in automata_sizes.iter() {
-        for train_size in train_sizes.iter() {
+    for &aut_size in automata_sizes.iter() {
+        for &train_size in train_sizes.iter() {
             let mut sets_of_size = vec![];
-            for _ in 0..num_sets {
-                let len_spoke = 2 * ((*aut_size as f64).log2().ceil() as usize) - 1;
+            for i in 0..num_sets {
+                let len_spoke = 2 * ((aut_size as f64).log2().ceil() as usize) - 1;
                 let len_cycle = (2 * aut_size - len_spoke) * len_spoke;
                 let (train, test) =
-                    generate_set(num_symbols, len_spoke, len_cycle, *train_size, test_size);
+                    generate_set(num_symbols, len_spoke, len_cycle, train_size, test_size);
+                export_set(set_name(aut_size, train_size, i, true), &train);
+                export_set(set_name(aut_size, train_size, i, false), &test);
                 sets_of_size.push((train, test));
-                export_set();
             }
-            sets.insert((*aut_size, *train_size), sets_of_size);
+            sets.insert((aut_size, train_size), sets_of_size);
         }
     }
 
@@ -157,7 +163,23 @@ where
 pub fn export_automaton() {}
 
 /// Write the given set to the given `path` as csv
-pub fn export_set() {}
+pub fn export_set(file: String, set: &IndexSet<ReducedOmegaWord<char>>) {
+    let mut wtr = Writer::from_path(file).expect("creating file failed");
+    for w in set.iter() {
+        wtr.write_record(&[
+            w.spoke().iter().collect::<String>(),
+            w.cycle().iter().collect()
+        ])
+        .unwrap();
+    }
+    wtr.flush().unwrap();
+}
+
+/// Give filename for a set of omega words
+pub fn set_name(aut_size: usize, set_size: usize, set_index: usize, train: bool) -> String {
+    let class = if train { "train" } else { "test" };
+    format!("data/sets/dba__aut_size={aut_size}__sample_size={set_size}__#{set_index:0>2}_{class}.csv")
+}
 
 /// Write the given omega automata learning task to the given `path` in HOA format
 pub fn export_task() {}
