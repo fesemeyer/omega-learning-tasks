@@ -1,12 +1,13 @@
 use automata::{
     prelude::*,
-    random::{generate_random_dba, generate_random_omega_words},
+    random::{generate_random_dba, generate_random_dpa, generate_random_omega_words},
 };
 use math::set::IndexSet;
 
 fn main() {
     // set parameters
     let num_symbols = 2;
+    let num_prios = 5;
     let automata_sizes = vec![4];
     let automata_per_size = 2;
     let train_sizes = vec![100];
@@ -18,6 +19,14 @@ fn main() {
     for size in automata_sizes.iter() {
         for i in 0..automata_per_size {
             let dba = generate_dba(num_symbols, *size, lambda);
+            export_automaton();
+        }
+    }
+
+    // generate DPAs
+    for size in automata_sizes.iter() {
+        for i in 0..automata_per_size {
+            let dpa = generate_dpa(num_symbols, *size, num_prios, lambda);
             export_automaton();
         }
     }
@@ -34,8 +43,8 @@ fn main() {
             }
         }
     }
-    // draw sample sets
-    // export sample sets
+    
+    // label sets
 }
 
 /// Generate a random DBA with `aut_size` states on an alphabet of size `num_symbols`.
@@ -61,8 +70,26 @@ pub fn generate_dba(num_symbols: usize, aut_size: usize, lambda: f64) -> DBA {
     dba
 }
 
+/// Generate a random DPA with `aut_size` states on an alphabet of size `num_symbols`.
+/// The parameter `lambda` is used to draw the acceptance condition from a continuous Bernoulli distribution.
+/// The produced automaton has an informative right congruence.
+pub fn generate_dpa(num_symbols: usize, aut_size: usize, num_prios: u8, lambda: f64) -> DPA {
+    let gen_size = aut_size + (aut_size as f32).log2().round() as usize - 1;
+    let mut dpa: DPA;
+    loop {
+        dpa = generate_random_dpa(num_symbols, gen_size, num_prios, lambda)
+            .streamlined()
+            .collect_dpa();
+        // check if dba has the correct size
+        if dpa.size() == aut_size && dpa.is_informative_right_congruent() {
+            break;
+        }
+    }
+    dpa
+}
+
 /// Generate a training set, test set pair of random ultimately periodic words.
-/// The length of spoke and cycle are drawn uniformly and the used alphabet is of size `num_symbols`. 
+/// The length of spoke and cycle are drawn uniformly and the used alphabet is of size `num_symbols`.
 pub fn generate_set(
     num_symbols: usize,
     len_spoke: usize,
