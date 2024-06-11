@@ -1,9 +1,10 @@
+use csv::Writer;
 use std::collections::HashMap;
 use std::fs;
-use csv::Writer;
 
 use automata::{
     automaton::InfiniteWordAutomaton,
+    hoa::output::WriteHoa,
     prelude::*,
     random::{generate_random_dba, generate_random_dpa, generate_random_omega_words},
 };
@@ -13,38 +14,39 @@ fn main() {
     // set parameters
     let num_symbols = 2;
     let num_prios = 5;
-    let automata_sizes = vec![4];
+    let automata_sizes = vec![4, 8];
     let automata_per_size = 2;
-    let train_sizes = vec![100];
+    let train_sizes = vec![100, 1000];
     let test_size = 1000;
     let num_sets = 2;
     let lambda = 0.95;
     fs::create_dir_all("data/automata").unwrap();
     fs::create_dir_all("data/sets").unwrap();
-    fs::create_dir_all("data/tasks").unwrap();
 
     // generate DBAs
     println!("generating DBAs");
     let mut dbas = HashMap::new();
-    for size in automata_sizes.iter() {
+    for &size in automata_sizes.iter() {
         let mut auts = vec![];
-        for _ in 0..automata_per_size {
-            let dba = generate_dba(num_symbols, *size, lambda);
+        for i in 0..automata_per_size {
+            let dba = generate_dba(num_symbols, size, lambda);
+            export_automaton(aut_name(size, i, "dba".to_string()), &dba);
             auts.push(dba);
-            export_automaton();
         }
-        dbas.insert(*size, auts);
+        dbas.insert(size, auts);
     }
 
     // generate DPAs
     println!("generating DPAs");
-    let mut dpas: Vec<DPA> = vec![];
-    for size in automata_sizes.iter() {
-        for _ in 0..automata_per_size {
-            let dpa = generate_dpa(num_symbols, *size, num_prios, lambda);
-            dpas.push(dpa);
-            export_automaton();
+    let mut dpas = HashMap::new();
+    for &size in automata_sizes.iter() {
+        let mut auts = vec![];
+        for i in 0..automata_per_size {
+            let dpa = generate_dpa(num_symbols, size, num_prios, lambda);
+            export_automaton(aut_name(size, i, "dpa".to_string()), &dpa);
+            auts.push(dpa);
         }
+        dpas.insert(size, auts);
     }
 
     // generate train and test sets
@@ -66,15 +68,59 @@ fn main() {
         }
     }
 
-    // label sets
-    println!("labelling sets");
-    for aut_size in automata_sizes.iter() {
-        for train_size in train_sizes.iter() {
-            let dba = &dbas[aut_size][0];
-            let (tr, te) = &sets[&(*aut_size, *train_size)][0];
-            let train = label_set(dba, tr);
-            let test = label_set(dba, te);
-            export_task();
+    // label dba sets
+    println!("labelling dba sets");
+    for &aut_size in automata_sizes.iter() {
+        for (aut_index, dba) in dbas[&aut_size].iter().enumerate() {
+            for &train_size in train_sizes.iter() {
+                for (set_index, &(ref tr, ref te)) in
+                    sets[&(aut_size, train_size)].iter().enumerate()
+                {
+                    let train = label_set(dba, tr);
+                    let test = label_set(dba, te);
+                    // export as learning task
+                    export_task(
+                        task_name(
+                            aut_size,
+                            train_size,
+                            aut_index,
+                            set_index,
+                            "dba".to_string(),
+                        ),
+                        dba,
+                        &train,
+                        &test,
+                    );
+                }
+            }
+        }
+    }
+
+    // label dpa sets
+    println!("labelling dpa sets");
+    for &aut_size in automata_sizes.iter() {
+        for (aut_index, dpa) in dpas[&aut_size].iter().enumerate() {
+            for &train_size in train_sizes.iter() {
+                for (set_index, &(ref tr, ref te)) in
+                    sets[&(aut_size, train_size)].iter().enumerate()
+                {
+                    let train = label_set(dpa, tr);
+                    let test = label_set(dpa, te);
+                    // export as learning task
+                    export_task(
+                        task_name(
+                            aut_size,
+                            train_size,
+                            aut_index,
+                            set_index,
+                            "dpa".to_string(),
+                        ),
+                        dpa,
+                        &train,
+                        &test,
+                    );
+                }
+            }
         }
     }
 }
@@ -160,7 +206,14 @@ where
 }
 
 /// Write the given automaton to the given `path` in HOA format
-pub fn export_automaton() {}
+pub fn export_automaton<AUT: WriteHoa>(file: String, aut: &AUT) {
+    fs::write(file, aut.to_hoa()).expect("Unable to write file");
+}
+
+/// Give filename for an omega automaton
+pub fn aut_name(aut_size: usize, aut_index: usize, acc_type: String) -> String {
+    format!("data/automata/{acc_type}__aut_size={aut_size}__{aut_index:0>2}.hoa")
+}
 
 /// Write the given set to the given `path` as csv
 pub fn export_set(file: String, set: &IndexSet<ReducedOmegaWord<char>>) {
@@ -168,7 +221,7 @@ pub fn export_set(file: String, set: &IndexSet<ReducedOmegaWord<char>>) {
     for w in set.iter() {
         wtr.write_record(&[
             w.spoke().iter().collect::<String>(),
-            w.cycle().iter().collect()
+            w.cycle().iter().collect(),
         ])
         .unwrap();
     }
@@ -178,8 +231,41 @@ pub fn export_set(file: String, set: &IndexSet<ReducedOmegaWord<char>>) {
 /// Give filename for a set of omega words
 pub fn set_name(aut_size: usize, set_size: usize, set_index: usize, train: bool) -> String {
     let class = if train { "train" } else { "test" };
-    format!("data/sets/dba__aut_size={aut_size}__sample_size={set_size}__#{set_index:0>2}_{class}.csv")
+    format!("data/sets/word_set__aut_size={aut_size}__sample_size={set_size}__{set_index:0>2}_{class}.csv")
+}
+
+pub fn export_labelled_set(file: String, set: &Vec<(ReducedOmegaWord<char>, bool)>) {
+    let mut wtr = Writer::from_path(file).expect("creating file failed");
+    for (w, r) in set.iter() {
+        wtr.write_record(&[
+            w.spoke().iter().collect(),
+            w.cycle().iter().collect(),
+            format!("{r:?}"),
+        ])
+        .unwrap();
+    }
+    wtr.flush().unwrap();
 }
 
 /// Write the given omega automata learning task to the given `path` in HOA format
-pub fn export_task() {}
+pub fn export_task<AUT: WriteHoa>(
+    name: String,
+    aut: &AUT,
+    train: &Vec<(ReducedOmegaWord<char>, bool)>,
+    test: &Vec<(ReducedOmegaWord<char>, bool)>,
+) {
+    fs::create_dir_all(format!("data/tasks/{name}")).unwrap();
+    export_automaton(format!("data/tasks/{name}/aut.hoa"), aut);
+    export_labelled_set(format!("data/tasks/{name}/train.csv"), train);
+    export_labelled_set(format!("data/tasks/{name}/test.csv"), test);
+}
+
+pub fn task_name(
+    aut_size: usize,
+    set_size: usize,
+    aut_index: usize,
+    set_index: usize,
+    acc_type: String,
+) -> String {
+    format!("{acc_type}_task__aut_size={aut_size}__sample_size={set_size}__{acc_type}{aut_index:0>2}__sample{set_index:0>2}")
+}
