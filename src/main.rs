@@ -1,6 +1,10 @@
 use csv::Writer;
 use std::collections::HashMap;
 use std::fs;
+use std::env;
+use std::path::PathBuf;
+use std::error::Error;
+use itertools::{Itertools, Either};
 
 use automata::{
     automaton::InfiniteWordAutomaton,
@@ -8,9 +12,75 @@ use automata::{
     prelude::*,
     random::{generate_random_dba, generate_random_dpa, generate_random_omega_words},
 };
+use automata_learning::passive::{OmegaSample, sprout::sprout};
 use math::set::IndexSet;
 
 fn main() {
+    let args: Vec<String> = env::args().collect();
+    if args.contains(&"gen".to_string()) {
+        // (re)generate tasks
+        println!("Start generating learning tasks");
+        generate_tasks();
+    }
+    if args.contains(&"sprout".to_string())  {
+        println!("Running sprout learner on all tasks");
+        run_sprout();
+    }
+    println!("Done");
+}
+
+pub fn run_sprout() {
+    // load task directories
+    let mut task_dirs = vec![];
+    let entries = fs::read_dir("data/tasks").expect("No learning tasks available");
+    for entry in entries {
+        if let Ok(entry) = entry {
+            if let Ok(file_type) = entry.file_type() {
+                if file_type.is_dir() {
+                    task_dirs.push(entry.path());
+                }
+            } else {
+                println!("Couldn't get file type for {:?}", entry.path());
+            }
+        }
+    }
+    let samples = task_dirs.iter().cloned().map(|dir| load_sample(dir));
+    // let samples = vec![load_sample(task_dirs[0].clone())];
+    
+    let idxs = 1;
+    // run learner
+    println!("starting sprout");
+    for (i, sample) in samples.enumerate() {
+        println!("Starting Task {}", i);
+        if i <= idxs && task_dirs[i].to_string_lossy().contains("dba") { 
+            let learned = sprout(sample, BuchiCondition);
+            println!("{:?}", learned);
+            // compute and save results
+        }
+    }
+    
+    // Todo: only run learner when result not there already
+}
+
+/// Generate a sample of ultimately periodic words by loading the training set from
+/// the learning task located in the given dircetory. 
+pub fn load_sample(mut dir: PathBuf) -> OmegaSample {
+    dir.push("train.csv");
+    let mut rdr = csv::Reader::from_path(dir).expect("No training set found"); 
+    let (pos_words, neg_words): (Vec<_>, Vec<_>) = rdr.deserialize()
+    .partition_map(|result| {
+        let (spoke, cycle, class): (String, String, bool) = result.expect("Failed to read training set");
+        let word = upw!(spoke, cycle);
+        if class { Either::Left(word) } else { Either::Right(word) }
+    });
+
+    // todo: check for size of alphabet
+    let alphabet = CharAlphabet::of_size(2);
+    OmegaSample::new_omega_from_pos_neg(alphabet, pos_words, neg_words)
+}
+
+/// generate set of learning tasks for DBA and DPA. 
+pub fn generate_tasks() {
     // set parameters
     let num_symbols = 2;
     let num_prios = 5;
@@ -258,6 +328,7 @@ pub fn export_task<AUT: WriteHoa>(
     export_automaton(format!("data/tasks/{name}/aut.hoa"), aut);
     export_labelled_set(format!("data/tasks/{name}/train.csv"), train);
     export_labelled_set(format!("data/tasks/{name}/test.csv"), test);
+    export_settings(format!("data/tasks/{name}/settings.txt"), name, aut.alphabet().size(), aut.size(), train.len(), test.len());
 }
 
 pub fn task_name(
@@ -268,4 +339,16 @@ pub fn task_name(
     acc_type: String,
 ) -> String {
     format!("{acc_type}_task__aut_size={aut_size}__sample_size={set_size}__{acc_type}{aut_index:0>2}__sample{set_index:0>2}")
+}
+
+pub fn export_settings(file: String, name: String, num_symbols: usize, aut_size: usize, train_size: usize, test_size: usize) {
+    let acc_type = if name.contains("dba") { "dba" } else { "dpa" };
+    let mut wtr = Writer::from_path(file).expect("creating file failed");
+    wtr.write_record(&["name", &name,]).unwrap();
+    wtr.write_record(&["aut_type", &acc_type,]).unwrap();
+    wtr.write_record(&["num_symbols", &format!("{num_symbols}"),]).unwrap();
+    wtr.write_record(&["aut_size", &format!("{aut_size}"),]).unwrap();
+    wtr.write_record(&["train_size", &format!("{train_size}"),]).unwrap();
+    wtr.write_record(&["test_size", &format!("{test_size}"),]).unwrap();
+    wtr.flush().unwrap();
 }
