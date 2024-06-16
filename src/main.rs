@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use std::fs;
 use std::env;
 use std::path::PathBuf;
-use std::error::Error;
 use itertools::{Itertools, Either};
 
 use automata::{
@@ -121,20 +120,32 @@ pub fn generate_tasks() {
 
     // generate train and test sets
     println!("generating word sets");
-    let mut sets = HashMap::new();
+    let mut sets_dba = HashMap::new();
+    let mut sets_dpa = HashMap::new();
     for &aut_size in automata_sizes.iter() {
         for &train_size in train_sizes.iter() {
-            let mut sets_of_size = vec![];
+            let mut sets_of_size_dba = vec![];
+            let mut sets_of_size_dpa = vec![];
             for i in 0..num_sets {
+                // DBA sets
+                let len_spoke = 2 * ((aut_size as f64).log2().ceil() as usize) - 1;
+                let len_cycle = aut_size;
+                let (train, test) =
+                    generate_set(num_symbols, len_spoke, len_cycle, train_size, test_size);
+                export_set(set_name(aut_size, train_size, i, true), &train);
+                export_set(set_name(aut_size, train_size, i, false), &test);
+                sets_of_size_dba.push((train, test));
+                // DPA sets
                 let len_spoke = 2 * ((aut_size as f64).log2().ceil() as usize) - 1;
                 let len_cycle = (2 * aut_size - len_spoke) * len_spoke;
                 let (train, test) =
                     generate_set(num_symbols, len_spoke, len_cycle, train_size, test_size);
                 export_set(set_name(aut_size, train_size, i, true), &train);
                 export_set(set_name(aut_size, train_size, i, false), &test);
-                sets_of_size.push((train, test));
+                sets_of_size_dpa.push((train, test));
             }
-            sets.insert((aut_size, train_size), sets_of_size);
+            sets_dba.insert((aut_size, train_size), sets_of_size_dba);
+            sets_dpa.insert((aut_size, train_size), sets_of_size_dpa);
         }
     }
 
@@ -144,7 +155,7 @@ pub fn generate_tasks() {
         for (aut_index, dba) in dbas[&aut_size].iter().enumerate() {
             for &train_size in train_sizes.iter() {
                 for (set_index, &(ref tr, ref te)) in
-                    sets[&(aut_size, train_size)].iter().enumerate()
+                    sets_dba[&(aut_size, train_size)].iter().enumerate()
                 {
                     let train = label_set(dba, tr);
                     let test = label_set(dba, te);
@@ -172,7 +183,7 @@ pub fn generate_tasks() {
         for (aut_index, dpa) in dpas[&aut_size].iter().enumerate() {
             for &train_size in train_sizes.iter() {
                 for (set_index, &(ref tr, ref te)) in
-                    sets[&(aut_size, train_size)].iter().enumerate()
+                    sets_dpa[&(aut_size, train_size)].iter().enumerate()
                 {
                     let train = label_set(dpa, tr);
                     let test = label_set(dpa, te);
