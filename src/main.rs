@@ -1,9 +1,9 @@
 use csv::Writer;
+use itertools::{Either, Itertools};
 use std::collections::HashMap;
-use std::fs;
 use std::env;
+use std::fs;
 use std::path::PathBuf;
-use itertools::{Itertools, Either};
 
 use automata::{
     automaton::InfiniteWordAutomaton,
@@ -11,7 +11,7 @@ use automata::{
     prelude::*,
     random::{generate_random_dba, generate_random_dpa, generate_random_omega_words},
 };
-use automata_learning::passive::{OmegaSample, sprout::sprout};
+use automata_learning::passive::{sprout::sprout, OmegaSample};
 use math::set::IndexSet;
 
 fn main() {
@@ -19,9 +19,22 @@ fn main() {
     if args.contains(&"gen".to_string()) {
         // (re)generate tasks
         println!("Start generating learning tasks");
-        generate_tasks();
+        let automata_sizes = vec![4, 8];
+        let automata_per_size = 2;
+        let train_sizes = vec![100, 1000];
+        let test_size = 10000;
+        let num_sets = 2;
+        let lambda = 0.95;
+        generate_tasks(
+            automata_sizes,
+            automata_per_size,
+            train_sizes,
+            test_size,
+            num_sets,
+            lambda,
+        );
     }
-    if args.contains(&"sprout".to_string())  {
+    if args.contains(&"sprout".to_string()) {
         println!("Running sprout learner on all tasks");
         run_sprout();
     }
@@ -45,7 +58,7 @@ pub fn run_sprout() {
     }
     let samples = task_dirs.iter().cloned().map(|dir| load_sample(dir));
     // let samples = vec![load_sample(task_dirs[0].clone())];
-    
+
     // run learner
     println!("Starting Sprout");
     for (i, sample) in samples.enumerate() {
@@ -55,7 +68,7 @@ pub fn run_sprout() {
         // check if task was already computed
         if dir.join("result.csv").exists() {
             println!("\tAlready computed. Skip.");
-            continue
+            continue;
         }
         if dir.to_string_lossy().contains("dba") {
             println!("\tStart learner.");
@@ -72,14 +85,21 @@ pub fn run_sprout() {
 }
 
 /// Generate a sample of ultimately periodic words by loading the training set from
-/// the learning task located in the given dircetory. 
+/// the learning task located in the given dircetory.
 pub fn load_sample(dir: PathBuf) -> OmegaSample {
-    let mut rdr = csv::Reader::from_path(dir.join("train.csv")).expect("No training set found"); 
-    let (pos_words, neg_words): (Vec<_>, Vec<_>) = rdr.deserialize()
-    .partition_map(|result| {
-        let (spoke, cycle, class): (String, String, bool) = result.expect("Failed to read training set");
-        let word = upw!(spoke, cycle);
-        if class { Either::Left(word) } else { Either::Right(word) }
+    let mut rdr = csv::Reader::from_path(dir.join("train.csv")).expect("No training set found");
+    let (pos_words, neg_words): (Vec<_>, Vec<_>) = rdr.deserialize().partition_map(|result| {
+        let (mut spoke, cycle, class): (String, String, bool) =
+            result.expect("Failed to read training set");
+        // let word = upw!(spoke, cycle);
+        let loop_index = spoke.len();
+        spoke.push_str(&cycle);
+        let word = ReducedOmegaWord::from_raw_parts(spoke.chars().collect(), loop_index);
+        if class {
+            Either::Left(word)
+        } else {
+            Either::Right(word)
+        }
     });
 
     // todo: check for size of alphabet
@@ -87,17 +107,18 @@ pub fn load_sample(dir: PathBuf) -> OmegaSample {
     OmegaSample::new_omega_from_pos_neg(alphabet, pos_words, neg_words)
 }
 
-/// generate set of learning tasks for DBA and DPA. 
-pub fn generate_tasks() {
+/// generate set of learning tasks for DBA and DPA.
+pub fn generate_tasks(
+    automata_sizes: Vec<usize>,
+    automata_per_size: usize,
+    train_sizes: Vec<usize>,
+    test_size: usize,
+    num_sets: usize,
+    lambda: f64,
+) {
     // set parameters
     let num_symbols = 2;
     let num_prios = 5;
-    let automata_sizes = vec![4, 8];
-    let automata_per_size = 2;
-    let train_sizes = vec![100];
-    let test_size = 10000;
-    let num_sets = 2;
-    let lambda = 0.95;
     fs::create_dir_all("data/automata").unwrap();
     fs::create_dir_all("data/sets").unwrap();
 
@@ -319,18 +340,34 @@ pub fn export_set(file: String, set: &IndexSet<ReducedOmegaWord<char>>) {
 }
 
 /// Load labelled set from csv. Split into positively and negatively labelled words
-pub fn load_set(path: &PathBuf, file: String) -> (Vec<ReducedOmegaWord<char>>,Vec<ReducedOmegaWord<char>>) {
-    let mut rdr = csv::Reader::from_path(path.join(file)).expect("No training set found"); 
-    rdr.deserialize()
-        .partition_map(|result| {
-            let (spoke, cycle, class): (String, String, bool) = result.expect("Failed to read training set");
-            let word = upw!(spoke, cycle);
-            if class { Either::Left(word) } else { Either::Right(word) }
-        })
+pub fn load_set(
+    path: &PathBuf,
+    file: String,
+) -> (Vec<ReducedOmegaWord<char>>, Vec<ReducedOmegaWord<char>>) {
+    let mut rdr = csv::Reader::from_path(path.join(file)).expect("No training set found");
+    rdr.deserialize().partition_map(|result| {
+        let (mut spoke, cycle, class): (String, String, bool) =
+            result.expect("Failed to read training set");
+        // let word = upw!(spoke, cycle);
+        let loop_index = spoke.len();
+        spoke.push_str(&cycle);
+        let word = ReducedOmegaWord::from_raw_parts(spoke.chars().collect(), loop_index);
+        if class {
+            Either::Left(word)
+        } else {
+            Either::Right(word)
+        }
+    })
 }
 
 /// Give filename for a set of omega words
-pub fn set_name(aut_size: usize, set_size: usize, set_index: usize, train: bool, acc_type: &str) -> String {
+pub fn set_name(
+    aut_size: usize,
+    set_size: usize,
+    set_index: usize,
+    train: bool,
+    acc_type: &str,
+) -> String {
     let class = if train { "train" } else { "test" };
     format!("data/sets/word_set__{acc_type}__aut_size={aut_size}__sample_size={set_size}__{set_index:0>2}_{class}.csv")
 }
@@ -359,7 +396,14 @@ pub fn export_task<AUT: WriteHoa>(
     export_automaton(format!("data/tasks/{name}/aut.hoa"), aut);
     export_labelled_set(format!("data/tasks/{name}/train.csv"), train);
     export_labelled_set(format!("data/tasks/{name}/test.csv"), test);
-    export_settings(format!("data/tasks/{name}/settings.txt"), name, aut.alphabet().size(), aut.size(), train.len(), test.len());
+    export_settings(
+        format!("data/tasks/{name}/settings.txt"),
+        name,
+        aut.alphabet().size(),
+        aut.size(),
+        train.len(),
+        test.len(),
+    );
 }
 
 pub fn task_name(
@@ -372,15 +416,26 @@ pub fn task_name(
     format!("{acc_type}_task__aut_size={aut_size}__sample_size={set_size}__{acc_type}{aut_index:0>2}__sample{set_index:0>2}")
 }
 
-pub fn export_settings(file: String, name: String, num_symbols: usize, aut_size: usize, train_size: usize, test_size: usize) {
+pub fn export_settings(
+    file: String,
+    name: String,
+    num_symbols: usize,
+    aut_size: usize,
+    train_size: usize,
+    test_size: usize,
+) {
     let acc_type = if name.contains("dba") { "dba" } else { "dpa" };
     let mut wtr = Writer::from_path(file).expect("creating file failed");
-    wtr.write_record(&["name", &name,]).unwrap();
-    wtr.write_record(&["aut_type", &acc_type,]).unwrap();
-    wtr.write_record(&["num_symbols", &format!("{num_symbols}"),]).unwrap();
-    wtr.write_record(&["aut_size", &format!("{aut_size}"),]).unwrap();
-    wtr.write_record(&["train_size", &format!("{train_size}"),]).unwrap();
-    wtr.write_record(&["test_size", &format!("{test_size}"),]).unwrap();
+    wtr.write_record(&["name", &name]).unwrap();
+    wtr.write_record(&["aut_type", &acc_type]).unwrap();
+    wtr.write_record(&["num_symbols", &format!("{num_symbols}")])
+        .unwrap();
+    wtr.write_record(&["aut_size", &format!("{aut_size}")])
+        .unwrap();
+    wtr.write_record(&["train_size", &format!("{train_size}")])
+        .unwrap();
+    wtr.write_record(&["test_size", &format!("{test_size}")])
+        .unwrap();
     wtr.flush().unwrap();
 }
 
@@ -388,8 +443,7 @@ pub fn export_settings(file: String, name: String, num_symbols: usize, aut_size:
 pub fn export_sprout_result<Z, C>(
     task_dir: &PathBuf,
     learned: &InfiniteWordAutomaton<CharAlphabet, Z, Void, C, true>,
-)
-where
+) where
     Z: OmegaSemantics<Void, C, Output = bool>,
     C: Color,
 {
@@ -401,26 +455,52 @@ where
     // score test set
     let mut scored_pos = label_set(learned, &test_pos.into_iter().collect());
     let scored_neg = label_set(learned, &test_neg.into_iter().collect());
-    let pos_correct = scored_pos.iter().map(|(_,b)| b).count();
-    let neg_correct = scored_neg.iter().map(|(_,b)| !b).count();
+    let pos_correct = scored_pos.iter().map(|(_, b)| b).count();
+    let neg_correct = scored_neg.iter().map(|(_, b)| !b).count();
     let total_correct = pos_correct + neg_correct;
-    
+
     let path_str = task_dir.to_str().unwrap();
     scored_pos.extend(scored_neg);
     export_labelled_set(format!("{}/test_learned.csv", path_str), &scored_pos);
 
     // export %correct, %pos/neg correct, aut size in result file
     let mut wtr = Writer::from_path(task_dir.join("result.csv")).expect("creating file failed");
-    wtr.write_record(&["learned_aut_size", &format!("{}", learned.size()),]).unwrap();
-    wtr.write_record(&["scored_correct", &format!("{total_correct}"),]).unwrap();
-    wtr.write_record(&["scored_correct%", &format!("{}", total_correct as f64 / test_size as f64),]).unwrap();
-    wtr.write_record(&["pos_correct", &format!("{pos_correct}"),]).unwrap();
-    wtr.write_record(&["pos_correct%", &format!("{}", pos_correct as f64 / pos_count as f64),]).unwrap();
-    wtr.write_record(&["neg_correct", &format!("{neg_correct}"),]).unwrap();
-    wtr.write_record(&["neg_correct%", &format!("{}", neg_correct as f64 / neg_count as f64),]).unwrap();
-    wtr.write_record(&["pos_count", &format!("{pos_count}"),]).unwrap();
-    wtr.write_record(&["pos_count%", &format!("{}", pos_count as f64 / test_size as f64),]).unwrap();
-    wtr.write_record(&["neg_count", &format!("{neg_count}"),]).unwrap();
-    wtr.write_record(&["neg_count%", &format!("{}", neg_count as f64 / test_size as f64),]).unwrap();
+    wtr.write_record(&["learned_aut_size", &format!("{}", learned.size())])
+        .unwrap();
+    wtr.write_record(&["scored_correct", &format!("{total_correct}")])
+        .unwrap();
+    wtr.write_record(&[
+        "scored_correct%",
+        &format!("{}", total_correct as f64 / test_size as f64),
+    ])
+    .unwrap();
+    wtr.write_record(&["pos_correct", &format!("{pos_correct}")])
+        .unwrap();
+    wtr.write_record(&[
+        "pos_correct%",
+        &format!("{}", pos_correct as f64 / pos_count as f64),
+    ])
+    .unwrap();
+    wtr.write_record(&["neg_correct", &format!("{neg_correct}")])
+        .unwrap();
+    wtr.write_record(&[
+        "neg_correct%",
+        &format!("{}", neg_correct as f64 / neg_count as f64),
+    ])
+    .unwrap();
+    wtr.write_record(&["pos_count", &format!("{pos_count}")])
+        .unwrap();
+    wtr.write_record(&[
+        "pos_count%",
+        &format!("{}", pos_count as f64 / test_size as f64),
+    ])
+    .unwrap();
+    wtr.write_record(&["neg_count", &format!("{neg_count}")])
+        .unwrap();
+    wtr.write_record(&[
+        "neg_count%",
+        &format!("{}", neg_count as f64 / test_size as f64),
+    ])
+    .unwrap();
     wtr.flush().unwrap();
 }
