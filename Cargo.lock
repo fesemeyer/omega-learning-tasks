@@ -128,6 +128,7 @@ checksum = "0c4b4d0bd25bd0b74681c0ad21497610ce1b7c91b1022cd21c80c6fbdd9476b0"
 [[package]]
 name = "automata"
 version = "0.0.4"
+source = "git+https://github.com/leonbohn/automata?rev=cefc759#cefc7590737bab23c052963e591863f585524b0c"
 dependencies = [
  "automata-core",
  "bimap",
@@ -150,12 +151,14 @@ dependencies = [
 [[package]]
 name = "automata-core"
 version = "0.1.0"
+source = "git+https://github.com/leonbohn/automata?rev=cefc759#cefc7590737bab23c052963e591863f585524b0c"
 dependencies = [
  "bimap",
  "biodivine-lib-bdd",
  "indexmap",
  "itertools 0.13.0",
  "rand",
+ "test-log",
  "tracing",
  "tracing-subscriber",
 ]
@@ -377,6 +380,7 @@ checksum = "95505c38b4572b2d910cecb0281560f54b440a19336cbbcb27bf6ce6adc6f5a8"
 [[package]]
 name = "hoars"
 version = "0.2.1"
+source = "git+https://github.com/leonbohn/automata?rev=cefc759#cefc7590737bab23c052963e591863f585524b0c"
 dependencies = [
  "ariadne",
  "automata-core",
