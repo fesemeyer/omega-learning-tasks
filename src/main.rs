@@ -45,18 +45,16 @@ pub fn run_sprout() {
     // load task directories
     let mut task_dirs = vec![];
     let entries = fs::read_dir("data/tasks").expect("No learning tasks available");
-    for entry in entries {
-        if let Ok(entry) = entry {
-            if let Ok(file_type) = entry.file_type() {
-                if file_type.is_dir() {
-                    task_dirs.push(entry.path());
-                }
-            } else {
-                println!("Couldn't get file type for {:?}", entry.path());
+    for entry in entries.flatten() {
+        if let Ok(file_type) = entry.file_type() {
+            if file_type.is_dir() {
+                task_dirs.push(entry.path());
             }
+        } else {
+            println!("Couldn't get file type for {:?}", entry.path());
         }
     }
-    let samples = task_dirs.iter().cloned().map(|dir| load_sample(dir));
+    let samples = task_dirs.iter().cloned().map(load_sample);
     // let samples = vec![load_sample(task_dirs[0].clone())];
 
     // run learner
@@ -184,7 +182,7 @@ pub fn generate_tasks(
     for &aut_size in automata_sizes.iter() {
         for (aut_index, dba) in dbas[&aut_size].iter().enumerate() {
             for &train_size in train_sizes.iter() {
-                for (set_index, &(ref tr, ref te)) in
+                for (set_index, (tr, te)) in
                     sets_dba[&(aut_size, train_size)].iter().enumerate()
                 {
                     let train = label_set(dba, tr);
@@ -212,7 +210,7 @@ pub fn generate_tasks(
     for &aut_size in automata_sizes.iter() {
         for (aut_index, dpa) in dpas[&aut_size].iter().enumerate() {
             for &train_size in train_sizes.iter() {
-                for (set_index, &(ref tr, ref te)) in
+                for (set_index, (tr, te)) in
                     sets_dpa[&(aut_size, train_size)].iter().enumerate()
                 {
                     let train = label_set(dpa, tr);
@@ -341,7 +339,7 @@ pub fn export_set(file: String, set: &IndexSet<ReducedOmegaWord<char>>) {
 
 /// Load labelled set from csv. Split into positively and negatively labelled words
 pub fn load_set(
-    path: &PathBuf,
+    path: &std::path::Path,
     file: String,
 ) -> (Vec<ReducedOmegaWord<char>>, Vec<ReducedOmegaWord<char>>) {
     let mut rdr = csv::Reader::from_path(path.join(file)).expect("No training set found");
@@ -372,7 +370,7 @@ pub fn set_name(
     format!("data/sets/word_set__{acc_type}__aut_size={aut_size}__sample_size={set_size}__{set_index:0>2}_{class}.csv")
 }
 
-pub fn export_labelled_set(file: String, set: &Vec<(ReducedOmegaWord<char>, bool)>) {
+pub fn export_labelled_set(file: String, set: &[(ReducedOmegaWord<char>, bool)]) {
     let mut wtr = Writer::from_path(file).expect("creating file failed");
     for (w, r) in set.iter() {
         wtr.write_record(&[
@@ -426,22 +424,22 @@ pub fn export_settings(
 ) {
     let acc_type = if name.contains("dba") { "dba" } else { "dpa" };
     let mut wtr = Writer::from_path(file).expect("creating file failed");
-    wtr.write_record(&["name", &name]).unwrap();
-    wtr.write_record(&["aut_type", &acc_type]).unwrap();
-    wtr.write_record(&["num_symbols", &format!("{num_symbols}")])
+    wtr.write_record(["name", &name]).unwrap();
+    wtr.write_record(["aut_type", &acc_type]).unwrap();
+    wtr.write_record(["num_symbols", &format!("{num_symbols}")])
         .unwrap();
-    wtr.write_record(&["aut_size", &format!("{aut_size}")])
+    wtr.write_record(["aut_size", &format!("{aut_size}")])
         .unwrap();
-    wtr.write_record(&["train_size", &format!("{train_size}")])
+    wtr.write_record(["train_size", &format!("{train_size}")])
         .unwrap();
-    wtr.write_record(&["test_size", &format!("{test_size}")])
+    wtr.write_record(["test_size", &format!("{test_size}")])
         .unwrap();
     wtr.flush().unwrap();
 }
 
 /// Score test set and export results
 pub fn export_sprout_result<Z, C>(
-    task_dir: &PathBuf,
+    task_dir: &std::path::Path,
     learned: &InfiniteWordAutomaton<CharAlphabet, Z, Void, C, true>,
 ) where
     Z: OmegaSemantics<Void, C, Output = bool>,
@@ -455,8 +453,8 @@ pub fn export_sprout_result<Z, C>(
     // score test set
     let mut scored_pos = label_set(learned, &test_pos.into_iter().collect());
     let scored_neg = label_set(learned, &test_neg.into_iter().collect());
-    let pos_correct = scored_pos.iter().map(|(_, b)| b).count();
-    let neg_correct = scored_neg.iter().map(|(_, b)| !b).count();
+    let pos_correct = scored_pos.iter().filter(|(_, b)| *b).count();
+    let neg_correct = scored_neg.iter().filter(|(_, b)| !b).count();
     let total_correct = pos_correct + neg_correct;
 
     let path_str = task_dir.to_str().unwrap();
@@ -465,39 +463,39 @@ pub fn export_sprout_result<Z, C>(
 
     // export %correct, %pos/neg correct, aut size in result file
     let mut wtr = Writer::from_path(task_dir.join("result.csv")).expect("creating file failed");
-    wtr.write_record(&["learned_aut_size", &format!("{}", learned.size())])
+    wtr.write_record(["learned_aut_size", &format!("{}", learned.size())])
         .unwrap();
-    wtr.write_record(&["scored_correct", &format!("{total_correct}")])
+    wtr.write_record(["scored_correct", &format!("{total_correct}")])
         .unwrap();
-    wtr.write_record(&[
+    wtr.write_record([
         "scored_correct%",
         &format!("{}", total_correct as f64 / test_size as f64),
     ])
     .unwrap();
-    wtr.write_record(&["pos_correct", &format!("{pos_correct}")])
+    wtr.write_record(["pos_correct", &format!("{pos_correct}")])
         .unwrap();
-    wtr.write_record(&[
+    wtr.write_record([
         "pos_correct%",
         &format!("{}", pos_correct as f64 / pos_count as f64),
     ])
     .unwrap();
-    wtr.write_record(&["neg_correct", &format!("{neg_correct}")])
+    wtr.write_record(["neg_correct", &format!("{neg_correct}")])
         .unwrap();
-    wtr.write_record(&[
+    wtr.write_record([
         "neg_correct%",
         &format!("{}", neg_correct as f64 / neg_count as f64),
     ])
     .unwrap();
-    wtr.write_record(&["pos_count", &format!("{pos_count}")])
+    wtr.write_record(["pos_count", &format!("{pos_count}")])
         .unwrap();
-    wtr.write_record(&[
+    wtr.write_record([
         "pos_count%",
         &format!("{}", pos_count as f64 / test_size as f64),
     ])
     .unwrap();
-    wtr.write_record(&["neg_count", &format!("{neg_count}")])
+    wtr.write_record(["neg_count", &format!("{neg_count}")])
         .unwrap();
-    wtr.write_record(&[
+    wtr.write_record([
         "neg_count%",
         &format!("{}", neg_count as f64 / test_size as f64),
     ])
