@@ -128,7 +128,7 @@ checksum = "0c4b4d0bd25bd0b74681c0ad21497610ce1b7c91b1022cd21c80c6fbdd9476b0"
 [[package]]
 name = "automata"
 version = "0.0.4"
-source = "git+https://github.com/leonbohn/automata?rev=cefc759#cefc7590737bab23c052963e591863f585524b0c"
+source = "git+https://github.com/leonbohn/automata?rev=8c60f50#8c60f50f63cdf032aee08fb29413bc7e10a09d93"
 dependencies = [
  "automata-core",
  "bimap",
@@ -151,7 +151,7 @@ dependencies = [
 [[package]]
 name = "automata-core"
 version = "0.1.0"
-source = "git+https://github.com/leonbohn/automata?rev=cefc759#cefc7590737bab23c052963e591863f585524b0c"
+source = "git+https://github.com/leonbohn/automata?rev=8c60f50#8c60f50f63cdf032aee08fb29413bc7e10a09d93"
 dependencies = [
  "bimap",
  "biodivine-lib-bdd",
@@ -380,7 +380,7 @@ checksum = "95505c38b4572b2d910cecb0281560f54b440a19336cbbcb27bf6ce6adc6f5a8"
 [[package]]
 name = "hoars"
 version = "0.2.1"
-source = "git+https://github.com/leonbohn/automata?rev=cefc759#cefc7590737bab23c052963e591863f585524b0c"
+source = "git+https://github.com/leonbohn/automata?rev=8c60f50#8c60f50f63cdf032aee08fb29413bc7e10a09d93"
 dependencies = [
  "ariadne",
  "automata-core",

@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-automata = { git = "https://github.com/leonbohn/automata", rev = "cefc759" }
-automata-learning = { path = "../automata-learning" }
+automata = { git = "https://github.com/leonbohn/automata", rev = "8c60f50" }
+automata = { git = "https://github.com/leonbohn/automata", rev = "d9b2496" }
 csv = "1.3.0"
 itertools = "0.13.0"
