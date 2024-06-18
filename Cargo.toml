@@ -7,6 +7,6 @@ edition = "2021"
 
 [dependencies]
 automata = { git = "https://github.com/leonbohn/automata", rev = "8c60f50" }
-automata = { git = "https://github.com/leonbohn/automata", rev = "d9b2496" }
+automata-learning = { git = "https://github.com/leonbohn/automata-learning", rev = "d9b2496" }
 csv = "1.3.0"
 itertools = "0.13.0"

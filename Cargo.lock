@@ -166,6 +166,7 @@ dependencies = [
 [[package]]
 name = "automata-learning"
 version = "0.1.0"
+source = "git+https://github.com/leonbohn/automata-learning?rev=d9b2496#d9b2496bb6b0d4791e59e2d7b120635f2da37636"
 dependencies = [
  "alea",
  "automata",
