@@ -87,12 +87,9 @@ pub fn run_sprout() {
 pub fn load_sample(dir: PathBuf) -> OmegaSample {
     let mut rdr = csv::Reader::from_path(dir.join("train.csv")).expect("No training set found");
     let (pos_words, neg_words): (Vec<_>, Vec<_>) = rdr.deserialize().partition_map(|result| {
-        let (mut spoke, cycle, class): (String, String, bool) =
+        let (spoke, cycle, class): (String, String, bool) =
             result.expect("Failed to read training set");
-        // let word = upw!(spoke, cycle);
-        let loop_index = spoke.len();
-        spoke.push_str(&cycle);
-        let word = ReducedOmegaWord::from_raw_parts(spoke.chars().collect(), loop_index);
+        let word = upw!(spoke, cycle);
         if class {
             Either::Left(word)
         } else {
@@ -310,7 +307,7 @@ where
     C: Color,
 {
     set.into_iter()
-        .map(|w| (w.clone().reduced(), aut.accepts(w.reduced())))
+        .map(|w| (w.clone(), aut.accepts(w)))
         .collect()
 }
 
@@ -344,12 +341,9 @@ pub fn load_set(
 ) -> (Vec<ReducedOmegaWord<char>>, Vec<ReducedOmegaWord<char>>) {
     let mut rdr = csv::Reader::from_path(path.join(file)).expect("No training set found");
     rdr.deserialize().partition_map(|result| {
-        let (mut spoke, cycle, class): (String, String, bool) =
+        let (spoke, cycle, class): (String, String, bool) =
             result.expect("Failed to read training set");
-        // let word = upw!(spoke, cycle);
-        let loop_index = spoke.len();
-        spoke.push_str(&cycle);
-        let word = ReducedOmegaWord::from_raw_parts(spoke.chars().collect(), loop_index);
+        let word = upw!(spoke, cycle);
         if class {
             Either::Left(word)
         } else {
@@ -372,8 +366,9 @@ pub fn set_name(
 
 pub fn export_labelled_set(file: String, set: &[(ReducedOmegaWord<char>, bool)]) {
     let mut wtr = Writer::from_path(file).expect("creating file failed");
+    wtr.write_record(["spoke", "cycle", "acceptance",]).unwrap();
     for (w, r) in set.iter() {
-        wtr.write_record(&[
+        wtr.write_record([
             w.spoke().iter().collect(),
             w.cycle().iter().collect(),
             format!("{r:?}"),
@@ -390,6 +385,9 @@ pub fn export_task<AUT: WriteHoa>(
     train: &Vec<(ReducedOmegaWord<char>, bool)>,
     test: &Vec<(ReducedOmegaWord<char>, bool)>,
 ) {
+    // remove old results if they exist
+    let _ = fs::remove_dir_all(format!("data/tasks/{name}"));
+    // export new data
     fs::create_dir_all(format!("data/tasks/{name}")).unwrap();
     export_automaton(format!("data/tasks/{name}/aut.hoa"), aut);
     export_labelled_set(format!("data/tasks/{name}/train.csv"), train);
