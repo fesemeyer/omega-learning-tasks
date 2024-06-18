@@ -19,11 +19,11 @@ fn main() {
     if args.contains(&"gen".to_string()) {
         // (re)generate tasks
         println!("Start generating learning tasks");
-        let automata_sizes = vec![4, 8];
-        let automata_per_size = 2;
-        let train_sizes = vec![100, 1000];
+        let automata_sizes = vec![4, 8, 16];
+        let automata_per_size = 10;
+        let train_sizes = vec![100, 1000, 10000];
         let test_size = 10000;
-        let num_sets = 2;
+        let num_sets = 5;
         let lambda = 0.95;
         generate_tasks(
             automata_sizes,
