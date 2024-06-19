@@ -1,9 +1,11 @@
 use csv::Writer;
 use itertools::{Either, Itertools};
-use std::collections::HashMap;
-use std::env;
-use std::fs;
-use std::path::PathBuf;
+use std::{
+    collections::HashMap,
+    env, fs,
+    path::PathBuf,
+    time::{Duration, SystemTime},
+};
 
 use automata::{
     automaton::InfiniteWordAutomaton,
@@ -68,16 +70,20 @@ pub fn run_sprout() {
             println!("\tAlready computed. Skip.");
             continue;
         }
+        println!("\tStart learner.");
+        let time = SystemTime::now();
         if dir.to_string_lossy().contains("dba") {
-            println!("\tStart learner.");
             let learned = sprout(sample, BuchiCondition);
+            let elapsed = time.elapsed().unwrap();
+            print!("\tLearning took {} ms", elapsed.as_millis());
             export_automaton(format!("{}/learned.hoa", dir.to_str().unwrap()), &learned);
-            export_sprout_result(dir, &learned);
+            export_sprout_result(dir, &learned, elapsed);
         } else {
-            println!("\tStart learner.");
             let learned = sprout(sample, MinEvenParityCondition);
+            let elapsed = time.elapsed().unwrap();
+            print!("\tLearning took {} ms", elapsed.as_millis());
             export_automaton(format!("{}/learned.hoa", dir.to_str().unwrap()), &learned);
-            export_sprout_result(dir, &learned);
+            export_sprout_result(dir, &learned, elapsed);
         }
     }
 }
@@ -179,9 +185,7 @@ pub fn generate_tasks(
     for &aut_size in automata_sizes.iter() {
         for (aut_index, dba) in dbas[&aut_size].iter().enumerate() {
             for &train_size in train_sizes.iter() {
-                for (set_index, (tr, te)) in
-                    sets_dba[&(aut_size, train_size)].iter().enumerate()
-                {
+                for (set_index, (tr, te)) in sets_dba[&(aut_size, train_size)].iter().enumerate() {
                     let train = label_set(dba, tr);
                     let test = label_set(dba, te);
                     // export as learning task
@@ -207,9 +211,7 @@ pub fn generate_tasks(
     for &aut_size in automata_sizes.iter() {
         for (aut_index, dpa) in dpas[&aut_size].iter().enumerate() {
             for &train_size in train_sizes.iter() {
-                for (set_index, (tr, te)) in
-                    sets_dpa[&(aut_size, train_size)].iter().enumerate()
-                {
+                for (set_index, (tr, te)) in sets_dpa[&(aut_size, train_size)].iter().enumerate() {
                     let train = label_set(dpa, tr);
                     let test = label_set(dpa, te);
                     // export as learning task
@@ -366,7 +368,7 @@ pub fn set_name(
 
 pub fn export_labelled_set(file: String, set: &[(ReducedOmegaWord<char>, bool)]) {
     let mut wtr = Writer::from_path(file).expect("creating file failed");
-    wtr.write_record(["spoke", "cycle", "acceptance",]).unwrap();
+    wtr.write_record(["spoke", "cycle", "acceptance"]).unwrap();
     for (w, r) in set.iter() {
         wtr.write_record([
             w.spoke().iter().collect(),
@@ -409,7 +411,7 @@ pub fn task_name(
     set_index: usize,
     acc_type: String,
 ) -> String {
-    format!("{acc_type}_task__aut_size={aut_size}__sample_size={set_size}__{acc_type}{aut_index:0>2}__sample{set_index:0>2}")
+    format!("{acc_type}_task__aut_size={aut_size:0>2}__sample_size={set_size:0>5}__{acc_type}{aut_index:0>2}__sample{set_index:0>2}")
 }
 
 pub fn export_settings(
@@ -439,6 +441,7 @@ pub fn export_settings(
 pub fn export_sprout_result<Z, C>(
     task_dir: &std::path::Path,
     learned: &InfiniteWordAutomaton<CharAlphabet, Z, Void, C, true>,
+    elapsed: Duration,
 ) where
     Z: OmegaSemantics<Void, C, Output = bool>,
     C: Color,
@@ -498,5 +501,7 @@ pub fn export_sprout_result<Z, C>(
         &format!("{}", neg_count as f64 / test_size as f64),
     ])
     .unwrap();
+    wtr.write_record(["time_ms", &format!("{}", elapsed.as_millis())])
+        .unwrap();
     wtr.flush().unwrap();
 }
